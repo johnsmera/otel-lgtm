@@ -1,0 +1,105 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+# Connector: Gera métricas a partir de spans (RED metrics)
+connectors:
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
+    dimensions:
+      - name: http.method
+      - name: http.status_code
+      - name: http.route
+    exemplars:
+      enabled: true
+    dimensions_cache_size: 1000
+    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+    metrics_flush_interval: 15s
+
+exporters:
+  # Traces -> Tempo
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Métricas -> Mimir (via remote write)
+  otlphttp/mimir:
+    endpoint: http://mimir:9009/otlp
+    tls:
+      insecure: true
+
+  # Logs -> Loki
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+  # Debug (útil para desenvolvimento)
+  debug:
+    verbosity: basic
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  # Adiciona informações de resource
+  resource:
+    attributes:
+      - key: service.instance.id
+        from_attribute: host.name
+        action: insert
+
+  # Detecta recursos automaticamente
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 5s
+    override: false
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  
+  pipelines:
+    # Pipeline de Traces
+    # Traces entram via OTLP -> processados -> exportados para Tempo
+    # Também alimentam o spanmetrics connector
+    traces:
+      receivers: [otlp]
+      processors: [resourcedetection, resource, batch]
+      exporters: [otlp/tempo, debug, spanmetrics]
+
+    # Pipeline de Métricas
+    # Recebe métricas do app + métricas derivadas de spans (spanmetrics)
+    metrics:
+      receivers: [otlp, spanmetrics]
+      processors: [resourcedetection, resource, batch]
+      exporters: [otlphttp/mimir, debug]
+
+    # Pipeline de Logs
+    logs:
+      receivers: [otlp]
+      processors: [resourcedetection, resource, batch]
+      exporters: [otlphttp/loki, debug]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
