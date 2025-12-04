@@ -9,6 +9,8 @@ services:
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    networks:
+      - network_external_name
     ports:
       - "127.0.0.1:4317:4317"   # OTLP gRPC receiver (apenas localhost - Nginx faz proxy)
       - "127.0.0.1:4318:4318"   # OTLP HTTP receiver (apenas localhost - Nginx faz proxy)
@@ -28,6 +30,8 @@ services:
     volumes:
       - ./config/tempo.yaml:/etc/tempo.yaml
       - tempo-data:/var/tempo
+    networks:
+      - network_external_name
     ports:
       - "3200:3200"   # Tempo API
       - "9095:9095"   # gRPC (para service graph)
@@ -42,6 +46,8 @@ services:
     volumes:
       - ./config/mimir.yaml:/etc/mimir.yaml
       - mimir-data:/data
+    networks:
+      - network_external_name
     ports:
       - "9009:9009"   # HTTP API
 
@@ -55,6 +61,8 @@ services:
     volumes:
       - ./config/loki.yaml:/etc/loki/local-config.yaml
       - loki-data:/loki
+    networks:
+      - network_external_name
     ports:
       - "3100:3100"   # HTTP API
 
@@ -72,6 +80,8 @@ services:
     volumes:
       - ./config/grafana/provisioning:/etc/grafana/provisioning
       - grafana-data:/var/lib/grafana
+    networks:
+      - network_external_name
     ports:
       - "3000:3000"
     depends_on:
@@ -84,3 +94,7 @@ volumes:
   mimir-data:
   loki-data:
   grafana-data:
+
+networks:
+  network_external_name:
+    external: true
